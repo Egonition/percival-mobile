@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Percival Mobile
 // @namespace    percival
-// @version      1.1.0
+// @version      1.2.0
 // @description  GBF Raid Automator for iOS
 // @match        https://game.granbluefantasy.jp/*
 // @grant        GM_setValue
@@ -17,13 +17,11 @@
   // ==========================================================
 
   function getSetting(key, defaultValue) {
-    // Try GM storage first
     try {
       const gmValue = GM_getValue(key);
       if (gmValue !== undefined) return gmValue;
     } catch (e) {}
 
-    // Fallback to localStorage
     try {
       const lsValue = localStorage.getItem('percival_' + key);
       if (lsValue !== null) return JSON.parse(lsValue);
@@ -33,23 +31,16 @@
   }
 
   function setSetting(key, value) {
-    // Save to GM storage
-    try {
-      GM_setValue(key, value);
-    } catch (e) {}
-
-    // Save to localStorage
-    try {
-      localStorage.setItem('percival_' + key, JSON.stringify(value));
-    } catch (e) {}
+    try { GM_setValue(key, value); } catch (e) {}
+    try { localStorage.setItem('percival_' + key, JSON.stringify(value)); } catch (e) {}
   }
 
   let settings = {
-    autoRaid:      getSetting('autoRaid', true),
-    autoCombat:    getSetting('autoCombat', true),
-    quickAttack:   getSetting('quickAttack', false),
-    reloadAttack:  getSetting('reloadAttack', false),
-    reloadSummon:  getSetting('reloadSummon', false)
+    autoRaid:      getSetting('autoRaid',      true),
+    autoCombat:    getSetting('autoCombat',    true),
+    quickAttack:   getSetting('quickAttack',   false),
+    reloadAttack:  getSetting('reloadAttack',  false),
+    reloadSummon:  getSetting('reloadSummon',  false)
   };
 
   function saveSetting(key, value) {
@@ -207,11 +198,11 @@
 
     // Toggles
     const toggleDefs = [
-      { key: 'autoRaid',     label: 'Auto Raid'       },
-      { key: 'autoCombat',   label: 'Full Auto'       },
-      { key: 'quickAttack',  label: 'Quick Attack'    },
-      { key: 'reloadAttack', label: 'Reload on Attack'},
-      { key: 'reloadSummon', label: 'Reload on Summon'}
+      { key: 'autoRaid',     label: 'Auto Raid'        },
+      { key: 'autoCombat',   label: 'Full Auto'        },
+      { key: 'quickAttack',  label: 'Quick Attack'     },
+      { key: 'reloadAttack', label: 'Reload on Attack' },
+      { key: 'reloadSummon', label: 'Reload on Summon' }
     ];
 
     toggleDefs.forEach(({ key, label }) => {
@@ -391,29 +382,59 @@
            rect.height > 0;
   }
 
-  function findOkButton() {
-    const b1 = document.querySelector('.btn-usual-ok.se-quest-start');
-    const b2 = document.querySelector('.btn-usual-ok.btn-silent-se');
-    const b3 = document.querySelector('.btn-quest-start.multi.se-quest-start');
+  function findQuestStartButton() {
+    const deckContainer  = document.querySelector('.prt-btn-deck');
+    const questContainer = document.querySelector('.prt-set-quest');
+
+    const b1 = deckContainer?.querySelector('.btn-usual-ok.se-quest-start');
+    const b2 = deckContainer?.querySelector('.btn-usual-ok.btn-silent-se');
+    const b3 = questContainer?.querySelector('.btn-quest-start.multi.se-quest-start');
+
     if (b1 && isVisible(b1)) return b1;
     if (b2 && isVisible(b2)) return b2;
     if (b3 && isVisible(b3)) return b3;
+
     return null;
   }
 
   function findAutoButton() {
-    const btn = document.querySelector('.btn-auto');
+    const container = document.querySelector('.cnt-raid');
+    const btn       = container?.querySelector('.btn-auto');
     return btn && isVisible(btn) ? btn : null;
   }
 
   function findAttackButton() {
-    const btn = document.querySelector('.btn-attack-start');
+    const container = document.querySelector('#cnt-raid-information');
+    const btn       = container?.querySelector('.btn-attack-start');
     return btn && isVisible(btn) ? btn : null;
   }
 
   function findDeadBoss() {
     const hp = document.getElementById('enemy-hp0');
     return hp && hp.textContent.trim() === '0';
+  }
+
+  function findDismissablePopup() {
+    const popup = document.querySelector('.pop-usual');
+    if (!popup) return false;
+
+    const isBattleEnded = !!popup.querySelector('.txt-rematch-fail');
+    const isExpGained   = popup.querySelector('.prt-popup-header')?.textContent?.trim() === 'EXP Gained';
+
+    return isBattleEnded || isExpGained;
+  }
+
+  function findPopupButton() {
+    const popup = document.querySelector('.pop-usual');
+    if (!popup) return null;
+
+    const isBattleEnded = !!popup.querySelector('.txt-rematch-fail');
+    const isExpGained   = popup.querySelector('.prt-popup-header')?.textContent?.trim() === 'EXP Gained';
+
+    if (!isBattleEnded && !isExpGained) return null;
+
+    const btn = popup.querySelector('.btn-usual-ok, .btn-usual-close');
+    return btn && isVisible(btn) ? btn : null;
   }
 
   // ==========================================================
@@ -425,7 +446,7 @@
     const currentUrl     = window.location.href;
     const urlChanged     = state.lastUrl !== currentUrl;
 
-    const okButton       = findOkButton();
+    const okButton       = findQuestStartButton();
     const autoButton     = findAutoButton();
     const isStartScreen  = okButton   && isVisible(okButton);
     const isBattleScreen = autoButton && isVisible(autoButton);
@@ -476,6 +497,13 @@
   async function checkButtons() {
     if (!state.active) return;
 
+    // Handle Auto-Dismissable Popups
+    if (findDismissablePopup()) {
+      const btn = findPopupButton();
+      if (btn) await simulateClick(btn, 'Closing Popup');
+      return;
+    }
+
     // Boss HP Check - Always On
     if (state.currentScreen === 'battle' && findDeadBoss() && !state.reloading) {
       state.reloading = true;
@@ -490,7 +518,7 @@
 
     // Start Raid
     if (settings.autoRaid && canClick('ok') && state.currentScreen === 'start') {
-      const okButton = findOkButton();
+      const okButton = findQuestStartButton();
       if (okButton) {
         cooldowns.ok             = Date.now();
         state.autoCombatActive   = false;
