@@ -198,7 +198,7 @@
 
     // Toggles
     const toggleDefs = [
-      { key: 'autoRaid',     label: 'Auto Raid'        },
+      { key: 'autoRaid',   label: 'Start Raid' },
       { key: 'autoCombat',   label: 'Full Auto'        },
       { key: 'quickAttack',  label: 'Quick Attack'     },
       { key: 'reloadAttack', label: 'Reload on Attack' },
@@ -530,7 +530,7 @@
           await sleep(delay);
         }
 
-        await simulateClick(okButton, 'Starting Raid...');
+        await simulateClick(okButton, 'Start Raid...');
         updateStatus('Raid Started - Waiting for Battle...');
         return;
       }
@@ -564,9 +564,9 @@
       if (autoButton) {
         cooldowns.auto           = Date.now();
         state.autoClickAttempted = true;
-        await simulateClick(autoButton, 'Auto Combat');
+        await simulateClick(autoButton, 'Full Auto');
         state.autoCombatActive = true;
-        updateStatus('Auto Combat Enabled');
+        updateStatus('Full Auto Enabled');
         return;
       }
     }
