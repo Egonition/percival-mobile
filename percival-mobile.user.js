@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Percival Mobile
 // @namespace    percival
-// @version      1.2.0
+// @version      1.3.0
 // @description  GBF Raid Automator for iOS
 // @match        https://game.granbluefantasy.jp/*
 // @grant        GM_setValue
@@ -105,7 +105,12 @@
     autoClickAttempted: false,
     hasSeenAutoButton:  false,
     lastCheck:          0,
-    reloading:          false
+    reloading:          false,
+
+    // Combat Tracking
+    battleScreenSince:  0,
+    lastTurnSeen:       '',
+    lastTurnChangedAt:  0
   };
 
   const cooldowns = {
@@ -372,6 +377,11 @@
   // Element Finders
   // ==========================================================
 
+  function isPageLoaded() {
+    const contents = document.querySelector('.contents');
+    return contents && contents.style.display !== 'none';
+  }
+
   function isVisible(element) {
     if (!element) return false;
     const style = window.getComputedStyle(element);
@@ -383,6 +393,8 @@
   }
 
   function findQuestStartButton() {
+    if (!isPageLoaded()) return null;
+
     const deckContainer  = document.querySelector('.prt-btn-deck');
     const questContainer = document.querySelector('.prt-set-quest');
 
@@ -398,23 +410,31 @@
   }
 
   function findAutoButton() {
+    if (!isPageLoaded()) return null;
+
     const container = document.querySelector('.cnt-raid');
     const btn       = container?.querySelector('.btn-auto');
     return btn && isVisible(btn) ? btn : null;
   }
 
   function findAttackButton() {
+    if (!isPageLoaded()) return null;
+
     const container = document.querySelector('#cnt-raid-information');
     const btn       = container?.querySelector('.btn-attack-start');
     return btn && isVisible(btn) ? btn : null;
   }
 
   function findDeadBoss() {
+    if (!isPageLoaded()) return false;
+
     const hp = document.getElementById('enemy-hp0');
     return hp && hp.textContent.trim() === '0';
   }
 
   function findDismissablePopup() {
+    if (!isPageLoaded()) return false;
+
     const popup = document.querySelector('.pop-usual');
     if (!popup) return false;
 
@@ -425,6 +445,8 @@
   }
 
   function findPopupButton() {
+    if (!isPageLoaded()) return null;
+
     const popup = document.querySelector('.pop-usual');
     if (!popup) return null;
 
@@ -469,9 +491,12 @@
 
       if (!state.raidInProgress) {
         state.raidInProgress     = true;
+        state.battleScreenSince  = Date.now();
         state.hasSeenAutoButton  = false;
         state.autoCombatActive   = false;
         state.autoClickAttempted = false;
+        state.lastTurnSeen       = '';
+        state.lastTurnChangedAt  = Date.now();
         updateStatus('Raid In Progress...');
       }
 
@@ -497,7 +522,7 @@
   async function checkButtons() {
     if (!state.active) return;
 
-    // Handle Auto-Dismissable Popups
+    // Handle Dismissable Popups
     if (findDismissablePopup()) {
       const btn = findPopupButton();
       if (btn) await simulateClick(btn, 'Closing Popup');
@@ -510,6 +535,25 @@
       updateStatus('Boss Dead - Reloading...');
       setTimeout(() => window.location.reload(), 1000 + Math.random() * 1000);
       return;
+    }
+
+    // Stale Turn Detection
+    if (state.autoCombatActive && state.currentScreen === 'battle') {
+      const turnEl      = document.querySelector('#js-turn-num-count');
+      const currentTurn = turnEl?.textContent?.trim() || '';
+
+      if (currentTurn !== state.lastTurnSeen) {
+        state.lastTurnSeen      = currentTurn;
+        state.lastTurnChangedAt = Date.now();
+      } else if (Date.now() - state.lastTurnChangedAt > 30000) {
+        console.warn('⚠️ Turn Counter Stale - Reloading...');
+        updateStatus('Battle Stuck - Reloading...');
+        state.autoCombatActive  = false;
+        state.lastTurnSeen      = '';
+        state.lastTurnChangedAt = 0;
+        setTimeout(() => window.location.reload(), 500);
+        return;
+      }
     }
 
     const now = Date.now();
@@ -536,10 +580,13 @@
       }
     }
 
+    const battleSettled = Date.now() - state.battleScreenSince > 2000;
+
     const inBattle = state.currentScreen === 'battle' &&
-                     state.hasSeenAutoButton           &&
-                     !state.autoClickAttempted         &&
-                     !state.autoCombatActive;
+                    state.hasSeenAutoButton           &&
+                    !state.autoClickAttempted         &&
+                    !state.autoCombatActive           &&
+                    battleSettled;
 
     // Quick Attack
     if (settings.quickAttack && canClick('attack') && inBattle) {
@@ -548,7 +595,8 @@
         cooldowns.attack         = Date.now();
         state.autoClickAttempted = true;
         await simulateClick(attackButton, 'Quick Attack');
-        state.autoCombatActive = true;
+        state.autoCombatActive  = true;
+        state.lastTurnChangedAt = Date.now();
         updateStatus('Quick Attack Used');
         setTimeout(() => {
           state.autoCombatActive   = false;
@@ -565,7 +613,8 @@
         cooldowns.auto           = Date.now();
         state.autoClickAttempted = true;
         await simulateClick(autoButton, 'Full Auto');
-        state.autoCombatActive = true;
+        state.autoCombatActive  = true;
+        state.lastTurnChangedAt = Date.now();
         updateStatus('Full Auto Enabled');
         return;
       }
