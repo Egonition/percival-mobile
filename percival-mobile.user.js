@@ -545,7 +545,7 @@
       if (currentTurn !== state.lastTurnSeen) {
         state.lastTurnSeen      = currentTurn;
         state.lastTurnChangedAt = Date.now();
-      } else if (Date.now() - state.lastTurnChangedAt > 30000) {
+      } else if (Date.now() - state.lastTurnChangedAt > 60000) {
         console.warn('⚠️ Turn Counter Stale - Reloading...');
         updateStatus('Battle Stuck - Reloading...');
         state.autoCombatActive  = false;
