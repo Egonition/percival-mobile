@@ -580,7 +580,7 @@
       }
     }
 
-    const battleSettled = Date.now() - state.battleScreenSince > 500;
+    const battleSettled = Date.now() - state.battleScreenSince > 1000;
 
     const inBattle = state.currentScreen === 'battle' &&
                     state.hasSeenAutoButton           &&
